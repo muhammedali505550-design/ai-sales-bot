@@ -1,12 +1,14 @@
 import os
+import json
 import logging
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+import time
+from urllib.request import Request, urlopen
+from urllib.error import URLError
 
-# Логирование
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8611840465:AAGS9FBoZmxhuq2hoTaRwGcC9WqF1Kf9rso")
+API_URL = f"https://telegram.org{TOKEN}"
 
 FAQ = {
     "привет": "Привет! Я твой ИИ-ассистент магазина SneakerHead. 🔥 У нас в наличии топовые кроссовки: Nike, Adidas, Jordan! Цены от 5000 до 15000 рублей. Что тебя интересует?",
@@ -18,47 +20,69 @@ FAQ = {
     "цена": "Цены на наши кроссовки от 5 000 до 15 000 рублей в зависимости от модели. Какая модель интересует?",
 }
 
-def start(update: Update, context: CallbackContext):
-    reply_markup = ReplyKeyboardMarkup(
-        [[KeyboardButton("Заказать кроссовки 👟", request_contact=True)]], 
-        resize_keyboard=True
-    )
-    update.message.reply_text(
-        "Добро пожаловать в SneakerHead! 👟\n\nЯ твой автоматический ИИ-продавец. Задай мне любой вопрос (например: 'Какие цены?', 'Что в наличии?', 'Какая доставка?').\n\nЕсли готов сделать заказ — просто нажми кнопку снизу!",
-        reply_markup=reply_markup
-    )
+def send_api_request(method, data):
+    url = f"{API_URL}/{method}"
+    req = Request(url, data=json.dumps(data).encode('utf-8'), headers={'Content-Type': 'application/json'})
+    try:
+        with urlopen(req) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except URLError as e:
+        logging.error(f"Ошибка API запроса: {e}")
+        return None
 
-def handle_message(update: Update, context: CallbackContext):
-    text = update.message.text.lower()
-    response = "Отличный вопрос! Наш менеджер уже бежит отвечать, но ты можешь прямо сейчас нажать кнопку 'Заказать кроссовки 👟' снизу, чтобы забронировать скидку и лучшую цену! 🚀"
+def handle_update(update):
+    if "message" not in update:
+        return
     
-    for key, value in FAQ.items():
-        if key in text:
-            response = value
-            break
-            
-    update.message.reply_text(response)
+    message = update["message"]
+    chat_id = message["chat"]["id"]
+    
+    if "text" in message:
+        text = message["text"].lower()
+        
+        if text == "/start":
+            reply_markup = {
+                "keyboard": [[{"text": "Заказать кроссовки 👟", "request_contact": True}]],
+                "resize_keyboard": True
+            }
+            send_api_request("sendMessage", {
+                "chat_id": chat_id,
+                "text": "Добро пожаловать в SneakerHead! 👟\n\nЯ твой автоматический ИИ-продавец. Задай мне любой вопрос (например: 'Какие цены?', 'Что в наличии?', 'Какая доставка?').\n\nЕсли готов сделать заказ — просто нажми кнопку снизу!",
+                "reply_markup": reply_markup
+            })
+            return
 
-def handle_contact(update: Update, context: CallbackContext):
-    contact = update.message.contact
-    phone = contact.phone_number
-    name = contact.first_name
-    print(f"🔥 НОВЫЙ ЛИД! Имя: {name}, Телефон: {phone}")
-    update.message.reply_text(
-        f"Спасибо, {name}! 🤝 Твоя заявка принята. Наш менеджер свяжется с тобой по номеру {phone} в течение 10 минут для подтверждения заказа и размера!"
-    )
+        response_text = "Отличный вопрос! Наш менеджер уже бежит отвечать, но ты можешь прямо сейчас нажать кнопку 'Заказать кроссовки 👟' снизу, чтобы забронировать скидку и лучшую цену! 🚀"
+        for key, value in FAQ.items():
+            if key in text:
+                response_text = value
+                break
+                
+        send_api_request("sendMessage", {"chat_id": chat_id, "text": response_text})
+
+    elif "contact" in message:
+        contact = message["contact"]
+        phone = contact["phone_number"]
+        name = contact.get("first_name", "Клиент")
+        logging.info(f"🔥 НОВЫЙ ЛИД! Имя: {name}, Телефон: {phone}")
+        send_api_request("sendMessage", {
+            "chat_id": chat_id,
+            "text": f"Спасибо, {name}! 🤝 Твоя заявка принята. Наш менеджер свяжется с тобой по номеру {phone} в течение 10 минут для подтверждения заказа и размера!"
+        })
 
 def main():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
-    
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
-    dp.add_handler(MessageHandler(Filters.contact, handle_contact))
-    
-    print("🤖 Бот успешно запущен!")
-    updater.start_polling()
-    updater.idle()
+    logging.info("🤖 Бот запускается на чистом Python...")
+    offset = 0
+    while True:
+        try:
+            updates = send_api_request("getUpdates", {"offset": offset, "timeout": 30})
+            if updates and updates.get("ok") and updates.get("result"):
+                for update in updates["result"]:
+                    handle_update(update)
+                    offset = update["update_id"] + 1
+        except Exception as e:
+            logging.error(f"Ошибка в главном цикле: {e}")
+        time.sleep(1)
 
 if __name__ == '__main__':
     main()
