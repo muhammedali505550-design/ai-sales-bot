@@ -1,8 +1,9 @@
 import os
 import logging
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
+# Логирование
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8611840465:AAGS9FBoZmxhuq2hoTaRwGcC9WqF1Kf9rso")
@@ -17,17 +18,17 @@ FAQ = {
     "цена": "Цены на наши кроссовки от 5 000 до 15 000 рублей в зависимости от модели. Какая модель интересует?",
 }
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def start(update: Update, context: CallbackContext):
     reply_markup = ReplyKeyboardMarkup(
         [[KeyboardButton("Заказать кроссовки 👟", request_contact=True)]], 
         resize_keyboard=True
     )
-    await update.message.reply_text(
+    update.message.reply_text(
         "Добро пожаловать в SneakerHead! 👟\n\nЯ твой автоматический ИИ-продавец. Задай мне любой вопрос (например: 'Какие цены?', 'Что в наличии?', 'Какая доставка?').\n\nЕсли готов сделать заказ — просто нажми кнопку снизу!",
         reply_markup=reply_markup
     )
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def handle_message(update: Update, context: CallbackContext):
     text = update.message.text.lower()
     response = "Отличный вопрос! Наш менеджер уже бежит отвечать, но ты можешь прямо сейчас нажать кнопку 'Заказать кроссовки 👟' снизу, чтобы забронировать скидку и лучшую цену! 🚀"
     
@@ -36,24 +37,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response = value
             break
             
-    await update.message.reply_text(response)
+    update.message.reply_text(response)
 
-async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def handle_contact(update: Update, context: CallbackContext):
     contact = update.message.contact
     phone = contact.phone_number
     name = contact.first_name
     print(f"🔥 НОВЫЙ ЛИД! Имя: {name}, Телефон: {phone}")
-    await update.message.reply_text(
-        f"Спасибо, {name}! 🤝 Твоя заявка принята. Наш старший менеджер свяжется с тобой по номеру {phone} в течение 10 минут для подтверждения заказа и размера!"
+    update.message.reply_text(
+        f"Спасибо, {name}! 🤝 Твоя заявка принята. Наш менеджер свяжется с тобой по номеру {phone} в течение 10 минут для подтверждения заказа и размера!"
     )
 
 def main():
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
+    
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
+    dp.add_handler(MessageHandler(Filters.contact, handle_contact))
+    
     print("🤖 Бот успешно запущен!")
-    app.run_polling()
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == '__main__':
     main()
