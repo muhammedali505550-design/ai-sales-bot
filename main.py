@@ -26,63 +26,40 @@ def send_api_request(method, data):
     try:
         with urlopen(req) as response:
             return json.loads(response.read().decode('utf-8'))
-    except URLError as e:
-        logging.error(f"Ошибка API запроса: {e}")
+    except URLError:
         return None
 
 def handle_update(update):
-    if "message" not in update:
-        return
-    
+    if "message" not in update: return
     message = update["message"]
     chat_id = message["chat"]["id"]
     
     if "text" in message:
         text = message["text"].lower()
-        
         if text == "/start":
-            reply_markup = {
-                "keyboard": [[{"text": "Заказать кроссовки 👟", "request_contact": True}]],
-                "resize_keyboard": True
-            }
-            send_api_request("sendMessage", {
-                "chat_id": chat_id,
-                "text": "Добро пожаловать в SneakerHead! 👟\n\nЯ твой автоматический ИИ-продавец. Задай мне любой вопрос (например: 'Какие цены?', 'Что в наличии?', 'Какая доставка?').\n\nЕсли готов сделать заказ — просто нажми кнопку снизу!",
-                "reply_markup": reply_markup
-            })
+            reply_markup = {"keyboard": [[{"text": "Заказать кроссовки 👟", "request_contact": True}]], "resize_keyboard": True}
+            send_api_request("sendMessage", {"chat_id": chat_id, "text": "Добро пожаловать в SneakerHead! 👟\n\nЯ твой автоматический ИИ-продавец. Задай мне любой вопрос (например: 'Какие цены?', 'Что в наличии?', 'Какая доставка?').\n\nЕсли готов сделать заказ — просто нажми кнопку снизу!", "reply_markup": reply_markup})
             return
-
         response_text = "Отличный вопрос! Наш менеджер уже бежит отвечать, но ты можешь прямо сейчас нажать кнопку 'Заказать кроссовки 👟' снизу, чтобы забронировать скидку и лучшую цену! 🚀"
         for key, value in FAQ.items():
-            if key in text:
-                response_text = value
-                break
-                
+            if key in text: response_text = value; break
         send_api_request("sendMessage", {"chat_id": chat_id, "text": response_text})
-
     elif "contact" in message:
         contact = message["contact"]
         phone = contact["phone_number"]
         name = contact.get("first_name", "Клиент")
-        logging.info(f"🔥 НОВЫЙ ЛИД! Имя: {name}, Телефон: {phone}")
-        send_api_request("sendMessage", {
-            "chat_id": chat_id,
-            "text": f"Спасибо, {name}! 🤝 Твоя заявка принята. Наш менеджер свяжется с тобой по номеру {phone} в течение 10 минут для подтверждения заказа и размера!"
-        })
+        send_api_request("sendMessage", {"chat_id": chat_id, "text": f"Спасибо, {name}! 🤝 Твоя заявка принята. Менеджер свяжется с тобой по номеру {phone} в течение 10 минут!"})
 
 def main():
-    logging.info("🤖 Бот запускается на чистом Python...")
     offset = 0
     while True:
         try:
-            updates = send_api_request("getUpdates", {"offset": offset, "timeout": 30})
+            updates = send_api_request("getUpdates", {"offset": offset, "timeout": 10})
             if updates and updates.get("ok") and updates.get("result"):
                 for update in updates["result"]:
                     handle_update(update)
                     offset = update["update_id"] + 1
-        except Exception as e:
-            logging.error(f"Ошибка в главном цикле: {e}")
+        except Exception: pass
         time.sleep(1)
 
-if __name__ == '__main__':
-    main()
+if __name__ == '__main__': main()
